@@ -204,8 +204,8 @@ parsing rendered C/C++ with regular expressions.
 
 Release tags use the four-part form `vX.Y.Z.BUILD`. Pushing a base tag such as
 `v1.2.3` starts the tag-only release workflow, which increments `BUILD`, builds
-and validates all artifacts, creates the final tag, and opens a **draft** GitHub
-Release for manual acceptance.
+and validates all artifacts, creates the final tag, and publishes the GitHub
+Release.
 
 Ordinary branch pushes do not trigger GitHub Actions.
 

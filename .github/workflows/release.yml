@@ -238,12 +238,12 @@ jobs:
           git tag $env:FINAL_TAG
           git push origin $env:FINAL_TAG
 
-      - name: Create draft release
+      - name: Publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:FINAL_TAG --draft --generate-notes `
+          gh release create $env:FINAL_TAG --generate-notes `
             --title "PdbLens $env:FINAL_TAG" `
             "artifacts/PdbLens-v$env:FULL_VERSION-x64-offline.msix" `
             "artifacts/PdbLens-v$env:FULL_VERSION-x64-online.msix" `
