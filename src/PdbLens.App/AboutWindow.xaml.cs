@@ -25,6 +25,7 @@ public sealed partial class AboutWindow : Window
     {
         RootGrid.RequestedTheme = theme;
         TitleBarThemeHelper.Apply(this, theme);
+        TitleBarThemeHelper.ApplyInsets(this, AboutTitleBar);
     }
 
     private void ConfigureTitleBar(ElementTheme theme)
@@ -41,6 +42,8 @@ public sealed partial class AboutWindow : Window
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AboutTitleBar);
             TitleBarThemeHelper.Apply(this, theme);
+            TitleBarThemeHelper.ApplyInsets(this, AboutTitleBar);
+            AboutTitleBar.SizeChanged += (_, _) => TitleBarThemeHelper.ApplyInsets(this, AboutTitleBar);
         }
         catch
         {

@@ -6,6 +6,7 @@ PdbLens is a WinUI 3 PDB symbol explorer powered by Microsoft DIA and
 ## Features
 
 - Open one or more PDB files.
+- Manage loaded PDB files, paths, symbol counts, and multi-select removal in a dedicated dialog.
 - Browse structs, classes, unions, enums, typedefs, functions, data, and public symbols.
 - Search and filter symbols without loading every symbol name into managed memory.
 - Render the first level of UDT definitions with native WinUI syntax highlighting.

@@ -1,6 +1,7 @@
 ﻿using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Windows.UI;
 using WinRT.Interop;
 
@@ -20,6 +21,7 @@ internal static class TitleBarThemeHelper
             var hwnd = WindowNative.GetWindowHandle(window);
             var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
             var titleBar = AppWindow.GetFromWindowId(windowId).TitleBar;
+            titleBar.PreferredHeightOption = TitleBarHeightOption.Standard;
             var dark = theme == ElementTheme.Dark;
             var foreground = dark ? Color.FromArgb(255, 255, 255, 255) : Color.FromArgb(255, 28, 28, 28);
             var inactiveForeground = dark ? Color.FromArgb(160, 255, 255, 255) : Color.FromArgb(150, 28, 28, 28);
@@ -42,6 +44,29 @@ internal static class TitleBarThemeHelper
         catch
         {
             // Color customization is optional; the system title bar remains usable.
+        }
+    }
+
+    public static void ApplyInsets(Window window, Grid titleBarElement)
+    {
+        try
+        {
+            if (!AppWindowTitleBar.IsCustomizationSupported())
+            {
+                return;
+            }
+
+            var hwnd = WindowNative.GetWindowHandle(window);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var titleBar = AppWindow.GetFromWindowId(windowId).TitleBar;
+            titleBarElement.Padding = new Thickness(
+                titleBar.LeftInset,
+                0,
+                titleBar.RightInset,
+                0);
+        }
+        catch
+        {
         }
     }
 }

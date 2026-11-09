@@ -40,22 +40,17 @@
         </Style>
     </Grid.Resources>
         <Grid.RowDefinitions>
-            <RowDefinition Height="48" />
+            <RowDefinition Height="32" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="28" />
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0">
-            <TitleBar x:Name="AppTitleBar"
-                      Title=""
-                      AutomationProperties.Name="PdbLens title bar"
-                      Height="48"
-                      Background="{ThemeResource LayerFillColorDefaultBrush}">
-                <TitleBar.Resources>
-                    <HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Stretch</HorizontalAlignment>
-                </TitleBar.Resources>
-                <TitleBar.Content>
+            <Grid x:Name="AppTitleBar"
+                  AutomationProperties.Name="PdbLens title bar"
+                  Height="32"
+                  Background="{ThemeResource LayerFillColorDefaultBrush}">
                     <Grid Padding="12,0,8,0" ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -153,13 +148,12 @@
                                 <FontIcon Glyph="&#xE946;" FontSize="14" />
                             </Button>
                         </StackPanel>
-                    </Grid>
-                </TitleBar.Content>
-            </TitleBar>
+                </Grid>
+            </Grid>
 
             <Grid x:Name="FallbackToolbar"
                   Visibility="Collapsed"
-                  Padding="12,6"
+                  Padding="12,0"
                   Background="{ThemeResource LayerFillColorDefaultBrush}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -232,7 +226,7 @@
 
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="LeftPaneColumn" Width="320" MinWidth="280" />
+                <ColumnDefinition x:Name="LeftPaneColumn" Width="340" MinWidth="300" />
                 <ColumnDefinition Width="1" />
                 <ColumnDefinition Width="*" MinWidth="520" />
             </Grid.ColumnDefinitions>
@@ -246,21 +240,20 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid Margin="16,18,16,10" ColumnSpacing="8">
+                <Grid Margin="16,14,16,10" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="2">
-                        <TextBlock Text="Symbols" FontSize="16" FontWeight="SemiBold" />
-                        <TextBlock x:Name="SymbolCountText" Text="No symbols loaded"
-                                   Style="{StaticResource CaptionTextStyle}" />
-                    </StackPanel>
                     <Button x:Name="OpenPdbButton"
-                            Grid.Column="1"
+                            Grid.Column="0"
+                            Height="32"
+                            Padding="12,0"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
                             Style="{StaticResource AccentButtonStyle}"
                             VerticalAlignment="Center"
+                            AutomationProperties.Name="Open PDB"
                             ToolTipService.ToolTip="Open PDB (Ctrl+O)"
                             Click="OpenPdb_Click">
                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -268,7 +261,13 @@
                             <TextBlock Text="Open PDB" />
                         </StackPanel>
                     </Button>
-                    <DropDownButton Grid.Column="2" Content="Filters" VerticalAlignment="Center"
+                    <DropDownButton Grid.Column="1"
+                                    Content="Filters"
+                                    Height="32"
+                                    Padding="12,0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Filter symbol categories">
                         <DropDownButton.Flyout>
                             <Flyout Placement="BottomEdgeAlignedRight">
@@ -299,13 +298,17 @@
                               DisplayMemberPath="DisplayName"
                               SelectionChanged="PdbFilter_SelectionChanged"
                               ToolTipService.ToolTip="Filter symbols by PDB" />
-                    <Button x:Name="ClosePdbButton" Grid.Column="1"
-                            AutomationProperties.Name="Close PDB"
-                            Style="{StaticResource TitleBarButtonStyle}"
-                            IsEnabled="False"
-                            ToolTipService.ToolTip="Close selected PDB"
-                            Click="ClosePdb_Click">
-                        <FontIcon Glyph="&#xE711;" FontSize="13" />
+                    <Button x:Name="ManagePdbsButton" Grid.Column="1"
+                            Height="32"
+                            Padding="12,0"
+                            VerticalAlignment="Center"
+                            AutomationProperties.Name="Manage PDBs"
+                            ToolTipService.ToolTip="Manage loaded PDB files"
+                            Click="ManagePdbs_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8B7;" FontSize="13" />
+                            <TextBlock Text="Manage" />
+                        </StackPanel>
                     </Button>
                 </Grid>
 
@@ -493,8 +496,11 @@
                 Background="{ThemeResource LayerFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0">
-            <Grid ColumnSpacing="12">
+            <Grid ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
@@ -502,8 +508,16 @@
                            Text="Ready"
                            Style="{StaticResource CaptionTextStyle}"
                            TextTrimming="CharacterEllipsis" />
+                <Border Grid.Column="1"
+                        Width="1"
+                        Height="12"
+                        Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                <TextBlock x:Name="SymbolCountText"
+                           Grid.Column="2"
+                           Text="0 symbols"
+                           Style="{StaticResource CaptionTextStyle}" />
                 <TextBlock x:Name="MemoryText"
-                           Grid.Column="1"
+                           Grid.Column="4"
                            Style="{StaticResource CaptionTextStyle}" />
             </Grid>
         </Border>

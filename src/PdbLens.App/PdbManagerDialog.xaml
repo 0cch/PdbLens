@@ -1,0 +1,116 @@
+﻿<ContentDialog
+    x:Class="PdbLens.App.PdbManagerDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PdbLens.App"
+    Title="Manage PDBs"
+    CloseButtonText="Done"
+    DefaultButton="Close">
+
+    <Grid Width="620" Height="390" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Spacing="2">
+            <TextBlock Text="Loaded PDB files"
+                       FontSize="16"
+                       FontWeight="SemiBold" />
+            <TextBlock x:Name="SummaryText"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+            <Button x:Name="AddPdbButton"
+                    Height="32"
+                    Padding="12,0"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="AddPdb_Click">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE8E5;" FontSize="14" />
+                    <TextBlock Text="Add PDB..." />
+                </StackPanel>
+            </Button>
+            <Button x:Name="RemoveSelectedButton"
+                    Height="32"
+                    Padding="12,0"
+                    IsEnabled="False"
+                    Click="RemoveSelected_Click">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                    <TextBlock Text="Remove selected" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <ListView x:Name="PdbList"
+                      SelectionMode="Multiple"
+                      SelectionChanged="PdbList_SelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:PdbManagerItem">
+                        <Grid Padding="6,8" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="34" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Width="30"
+                                    Height="30"
+                                    CornerRadius="6"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                <FontIcon Glyph="&#xE8B7;"
+                                          FontSize="15"
+                                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                            </Border>
+
+                            <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Name}"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind Path}"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Column="2"
+                                       Text="{x:Bind SymbolText}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <StackPanel x:Name="EmptyState"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="8">
+                <FontIcon Glyph="&#xE8B7;"
+                          FontSize="28"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="No PDB files managed"
+                           HorizontalAlignment="Center"
+                           FontSize="16"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="Use Add PDB... to load one or more symbol files."
+                           HorizontalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </Grid>
+
+        <TextBlock Grid.Row="3"
+                   Text="Selected files can be removed with the button above. New files are loaded when you choose Done."
+                   TextWrapping="Wrap"
+                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                   FontSize="12" />
+    </Grid>
+</ContentDialog>

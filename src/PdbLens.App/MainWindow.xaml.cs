@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window
     private bool _hasMore;
     private int _queryGeneration;
     private bool _resizingPane;
+    private bool _manageDialogOpen;
     private double _paneStartX;
     private double _paneStartWidth;
 
@@ -104,6 +105,8 @@ public sealed partial class MainWindow : Window
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AppTitleBar);
             TitleBarThemeHelper.Apply(this, RootGrid.ActualTheme);
+            TitleBarThemeHelper.ApplyInsets(this, AppTitleBar);
+            AppTitleBar.SizeChanged += (_, _) => TitleBarThemeHelper.ApplyInsets(this, AppTitleBar);
         }
         catch
         {
@@ -115,6 +118,7 @@ public sealed partial class MainWindow : Window
     private void RootGrid_ActualThemeChanged(FrameworkElement sender, object args)
     {
         TitleBarThemeHelper.Apply(this, RootGrid.ActualTheme);
+        TitleBarThemeHelper.ApplyInsets(this, AppTitleBar);
         RenderCurrentDefinition();
     }
 
@@ -220,7 +224,7 @@ public sealed partial class MainWindow : Window
         }
 
         var delta = e.GetCurrentPoint(RootGrid).Position.X - _paneStartX;
-        var width = Math.Clamp(_paneStartWidth + delta, 300, 520);
+        var width = Math.Clamp(_paneStartWidth + delta, 300, 560);
         LeftPaneColumn.Width = new GridLength(width);
         e.Handled = true;
     }
@@ -329,24 +333,67 @@ public sealed partial class MainWindow : Window
             UpdateMemoryUsage();
         }
     }
-    private async void ClosePdb_Click(object sender, RoutedEventArgs e)
+    private async void ManagePdbs_Click(object sender, RoutedEventArgs e)
     {
-        if (_workspaceService is null || PdbFilterBox.SelectedItem is not PdbFilterOption option ||
-            option.PdbId == 0)
+        if (_workspaceService is null || _manageDialogOpen)
         {
-            ShowError("Close PDB", "Select a specific PDB in the filter first.");
             return;
         }
 
+        _manageDialogOpen = true;
         try
         {
-            await _workspaceService.ClosePdbAsync(option.PdbId);
-            var pdb = _pdbs.FirstOrDefault(value => value.PdbId == option.PdbId);
-            if (pdb is not null)
+            var dialog = new PdbManagerDialog(this, _pdbs)
             {
-                _pdbs.Remove(pdb);
+                XamlRoot = RootGrid.XamlRoot
+            };
+            await dialog.ShowAsync();
+
+            if (dialog.RemovedPdbIds.Count > 0)
+            {
+                await ClosePdbIdsAsync(dialog.RemovedPdbIds);
             }
-            _pdbFilters.Remove(option);
+
+            if (dialog.AddedPaths.Count > 0)
+            {
+                await OpenPdbPathsAsync(dialog.AddedPaths);
+            }
+        }
+        catch (Exception error)
+        {
+            ShowError("Unable to manage PDBs", error.Message);
+        }
+        finally
+        {
+            _manageDialogOpen = false;
+        }
+    }
+
+    private async Task ClosePdbIdsAsync(IReadOnlyCollection<uint> pdbIds)
+    {
+        if (_workspaceService is null || pdbIds.Count == 0)
+        {
+            return;
+        }
+
+        SetBusy(true);
+        try
+        {
+            foreach (var pdbId in pdbIds.Distinct())
+            {
+                await _workspaceService.ClosePdbAsync(pdbId);
+                var pdb = _pdbs.FirstOrDefault(value => value.PdbId == pdbId);
+                if (pdb is not null)
+                {
+                    _pdbs.Remove(pdb);
+                }
+
+                var option = _pdbFilters.FirstOrDefault(value => value.PdbId == pdbId);
+                if (option is not null)
+                {
+                    _pdbFilters.Remove(option);
+                }
+            }
 
             _suppressControlEvents = true;
             PdbFilterBox.SelectedIndex = 0;
@@ -356,11 +403,15 @@ public sealed partial class MainWindow : Window
             TitleSubtitleText.Text = _pdbs.Count == 0
                 ? "PDB symbol explorer"
                 : _pdbs.Count == 1 ? _pdbs[0].Name : $"{_pdbs.Count:N0} PDB files loaded";
-            UpdateMemoryUsage();
         }
         catch (Exception error)
         {
             ShowError("Failed to close PDB", error.Message);
+        }
+        finally
+        {
+            SetBusy(false);
+            UpdateMemoryUsage();
         }
     }
 
@@ -391,7 +442,6 @@ public sealed partial class MainWindow : Window
     }
     private async void PdbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        ClosePdbButton.IsEnabled = SelectedPdbId != 0;
         if (_ignoreNextPdbFilterChange)
         {
             _ignoreNextPdbFilterChange = false;
