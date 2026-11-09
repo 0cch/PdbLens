@@ -1,0 +1,239 @@
+﻿name: Release
+
+'on':
+  push:
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pdb-lens-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.tag.outputs.should_release }}
+    steps:
+      - name: Require an exact vX.Y.Z base tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Ignoring non-base tag $GITHUB_REF_NAME; expected vX.Y.Z."
+          fi
+
+  release:
+    needs: validate-tag
+    if: needs.validate-tag.outputs.should_release == 'true'
+    runs-on: windows-2022
+    env:
+      WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Resolve build version
+        shell: pwsh
+        run: |
+          $baseTag = $env:GITHUB_REF_NAME
+          if ($baseTag -notmatch '^v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$') {
+              throw "Release tag must use vX.Y.Z format: $baseTag"
+          }
+
+          git fetch --tags --force
+          $prefix = "$baseTag."
+          $builds = @(git tag --list "$prefix*" | ForEach-Object {
+              if ($_ -match "^$([regex]::Escape($prefix))(?<build>\d+)$") {
+                  [int]$Matches.build
+              }
+          })
+          $nextBuild = if ($builds.Count -eq 0) { 1 } else { ($builds | Measure-Object -Maximum).Maximum + 1 }
+          if ($nextBuild -gt 65535) {
+              throw "BUILD exceeds the MSIX limit of 65535. Increase X.Y.Z."
+          }
+
+          $baseVersion = $baseTag.Substring(1)
+          $version = "$baseVersion.$nextBuild"
+          $assemblyVersion = "$baseVersion.0"
+          "BASE_VERSION=$baseVersion" >> $env:GITHUB_ENV
+          "FULL_VERSION=$version" >> $env:GITHUB_ENV
+          "ASSEMBLY_VERSION=$assemblyVersion" >> $env:GITHUB_ENV
+          "FINAL_TAG=v$version" >> $env:GITHUB_ENV
+          Write-Host "Release version: $version"
+
+      - name: Apply package version
+        shell: pwsh
+        run: |
+          $manifestPath = "src/PdbLens.App/Package.appxmanifest"
+          [xml]$manifest = Get-Content -LiteralPath $manifestPath
+          $manifest.Package.Identity.SetAttribute("Version", $env:FULL_VERSION)
+          if ($env:WINDOWS_PUBLISHER) {
+              $manifest.Package.Identity.SetAttribute("Publisher", $env:WINDOWS_PUBLISHER)
+          }
+          $manifest.Save((Resolve-Path $manifestPath))
+
+      - name: Configure native bridge
+        run: cmake -S . -B build/native -G "Visual Studio 17 2022" -A x64
+
+      - name: Build native bridge
+        run: cmake --build build/native --config Release --parallel
+
+      - name: Run native tests
+        run: ctest --test-dir build/native -C Release --output-on-failure
+
+      - name: Restore managed projects
+        run: dotnet restore PdbLens.sln
+
+      - name: Build managed projects
+        shell: pwsh
+        run: |
+          dotnet build PdbLens.sln -c Release --no-restore `
+            -p:Version=$env:FULL_VERSION `
+            -p:FileVersion=$env:FULL_VERSION `
+            -p:AssemblyVersion=$env:ASSEMBLY_VERSION `
+            -p:InformationalVersion="$env:FULL_VERSION+$env:GITHUB_SHA"
+
+      - name: Run managed tests
+        run: dotnet test tests/PdbLens.Core.Tests/PdbLens.Core.Tests.csproj -c Release --no-build --no-restore
+
+      - name: Build complete offline MSIX
+        shell: pwsh
+        run: |
+          dotnet build src/PdbLens.App/PdbLens.App.csproj -c Release -p:Platform=x64 `
+            -p:PdbLensPackaged=true -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxPackageSigningEnabled=false -p:Version=$env:FULL_VERSION `
+            -p:FileVersion=$env:FULL_VERSION -p:AssemblyVersion=$env:ASSEMBLY_VERSION `
+            -p:InformationalVersion="$env:FULL_VERSION+$env:GITHUB_SHA" --no-restore
+
+          $msix = Get-ChildItem src/PdbLens.App/AppPackages -Recurse -Filter *.msix |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $msix) { throw "MSIX output not found" }
+
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item -LiteralPath $msix.FullName -Destination "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix"
+
+      - name: Build portable package
+        shell: pwsh
+        run: |
+          dotnet publish src/PdbLens.App/PdbLens.App.csproj -c Release -r win-x64 --self-contained true `
+            -p:Version=$env:FULL_VERSION -p:FileVersion=$env:FULL_VERSION `
+            -p:AssemblyVersion=$env:ASSEMBLY_VERSION `
+            -p:InformationalVersion="$env:FULL_VERSION+$env:GITHUB_SHA" `
+            --no-restore -o artifacts/portable
+
+          Get-ChildItem artifacts/portable -Filter *.pdb -File | Remove-Item -Force
+          Get-ChildItem artifacts/portable -Filter *.xml -File | Remove-Item -Force
+          Compress-Archive -Path artifacts/portable/* `
+            -DestinationPath "artifacts/PdbLens-v$env:FULL_VERSION-win-x64.zip" -Force
+
+      - name: Build symbols package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/symbols | Out-Null
+          Copy-Item "build/native/Release/PdbLens.Native.pdb" artifacts/symbols/
+          Copy-Item "src/PdbLens.Core/bin/Release/net9.0-windows10.0.26100.0/PdbLens.Core.pdb" artifacts/symbols/
+          Copy-Item "src/PdbLens.App/bin/x64/Release/net9.0-windows10.0.26100.0/win-x64/PdbLens.App.pdb" artifacts/symbols/
+          Compress-Archive -Path artifacts/symbols/* `
+            -DestinationPath "artifacts/PdbLens-v$env:FULL_VERSION-symbols.zip" -Force
+
+      - name: Validate package contents
+        shell: pwsh
+        run: |
+          ./scripts/Test-PackageContents.ps1 `
+            -MsixPath "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix" `
+            -PortableDirectory "artifacts/portable" `
+            -ExpectedVersion $env:FULL_VERSION
+
+      - name: Create online installer
+        shell: pwsh
+        run: |
+          $msixUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/v$env:FULL_VERSION/PdbLens-v$env:FULL_VERSION-x64.msix"
+          $publisher = if ($env:WINDOWS_PUBLISHER) { $env:WINDOWS_PUBLISHER } else { "CN=PdbLens" }
+          ./scripts/New-OnlineInstaller.ps1 `
+            -Version $env:FULL_VERSION `
+            -MsixUri $msixUrl `
+            -Publisher $publisher `
+            -OutputPath "artifacts/PdbLens-Setup-v$env:FULL_VERSION.appinstaller"
+
+      - name: Sign package when certificate is configured
+        if: ${{ env.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: pwsh
+
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "PdbLens-signing.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+              Where-Object FullName -match '\\x64\\signtool.exe$' |
+              Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found" }
+
+          & $signtool.FullName sign /fd SHA256 /f $certificatePath `
+            /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+            /tr http://timestamp.digicert.com /td SHA256 `
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix"
+          if ($LASTEXITCODE -ne 0) { throw "MSIX signing failed." }
+
+          & $signtool.FullName verify /pa /v `
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix"
+          if ($LASTEXITCODE -ne 0) { throw "MSIX signature verification failed." }
+
+          Remove-Item -LiteralPath $certificatePath -Force
+
+      - name: Report unsigned package
+        if: ${{ env.WINDOWS_CERTIFICATE_BASE64 == '' }}
+        shell: pwsh
+        run: Write-Host "::warning title=Unsigned MSIX::Configure WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD before publishing this release."
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          $files = @(
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix",
+            "artifacts/PdbLens-v$env:FULL_VERSION-win-x64.zip",
+            "artifacts/PdbLens-Setup-v$env:FULL_VERSION.appinstaller",
+            "artifacts/PdbLens-v$env:FULL_VERSION-symbols.zip"
+          )
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+            "$hash  $(Split-Path -Leaf $file)"
+          }
+          $lines | Set-Content "artifacts/PdbLens-v$env:FULL_VERSION-SHA256SUMS.txt" -Encoding ascii
+
+      - name: Create final tag
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag $env:FINAL_TAG
+          git push origin $env:FINAL_TAG
+
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:FINAL_TAG --draft --generate-notes `
+            --title "PdbLens $env:FINAL_TAG" `
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix" `
+            "artifacts/PdbLens-v$env:FULL_VERSION-win-x64.zip" `
+            "artifacts/PdbLens-Setup-v$env:FULL_VERSION.appinstaller" `
+            "artifacts/PdbLens-v$env:FULL_VERSION-symbols.zip" `
+            "artifacts/PdbLens-v$env:FULL_VERSION-SHA256SUMS.txt"

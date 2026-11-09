@@ -1,17 +1,18 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Text.Json;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.Web.WebView2.Core;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using PdbLens.Core.Models;
-using PdbLens.Core.Presentation;
 using PdbLens.Core.Services;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using Windows.System;
+using Windows.UI;
 using WinRT.Interop;
 
 namespace PdbLens.App;
@@ -32,12 +33,16 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _searchCancellation;
     private SymbolDefinition? _currentDefinition;
     private bool _initialized;
-    private bool _webReady;
     private bool _suppressControlEvents;
     private bool _suppressSelectionLoading;
+    private bool _ignoreNextSearchChange;
+    private bool _ignoreNextPdbFilterChange;
     private uint _currentOffset;
     private bool _hasMore;
     private int _queryGeneration;
+    private bool _resizingPane;
+    private double _paneStartX;
+    private double _paneStartWidth;
 
     public MainWindow(IReadOnlyList<string>? initialPdbPaths = null)
     {
@@ -45,7 +50,9 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Title = "PDB Lens";
         ResizeWindow();
+        ConfigureKeyboardAccelerators();
 
+        RootGrid.ActualThemeChanged += (_, _) => RenderCurrentDefinition();
         SymbolsList.ItemsSource = _symbols;
         PdbFilterBox.ItemsSource = _pdbFilters;
         _pdbFilters.Add(new PdbFilterOption(0, "All loaded PDBs"));
@@ -70,9 +77,83 @@ public sealed partial class MainWindow : Window
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new SizeInt32(1440, 900));
+        var workArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary).WorkArea;
+        var width = Math.Clamp(workArea.Width - 96, 900, 1440);
+        var height = Math.Clamp(workArea.Height - 96, 640, 900);
+        appWindow.Resize(new SizeInt32(width, height));
     }
 
+    private void ConfigureKeyboardAccelerators()
+    {
+        AddKeyboardAccelerator(VirtualKey.O, VirtualKeyModifiers.Control,
+            () => OpenPdb_Click(this, new RoutedEventArgs()));
+        AddKeyboardAccelerator(VirtualKey.F, VirtualKeyModifiers.Control,
+            () => SearchBox.Focus(FocusState.Keyboard));
+        AddKeyboardAccelerator(VirtualKey.Left, VirtualKeyModifiers.Menu,
+            () => Back_Click(this, new RoutedEventArgs()));
+        AddKeyboardAccelerator(VirtualKey.Right, VirtualKeyModifiers.Menu,
+            () => Forward_Click(this, new RoutedEventArgs()));
+    }
+
+    private void AddKeyboardAccelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
+    {
+        var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+        accelerator.Invoked += (_, args) =>
+        {
+            args.Handled = true;
+            action();
+        };
+        RootGrid.KeyboardAccelerators.Add(accelerator);
+    }
+    private void PaneSplitter_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        PaneSplitter.Background = new SolidColorBrush(Color.FromArgb(80, 128, 128, 128));
+    }
+
+    private void PaneSplitter_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _resizingPane = true;
+        _paneStartX = e.GetCurrentPoint(RootGrid).Position.X;
+        _paneStartWidth = LeftPaneColumn.ActualWidth;
+        PaneSplitter.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void PaneSplitter_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_resizingPane)
+        {
+            return;
+        }
+
+        var delta = e.GetCurrentPoint(RootGrid).Position.X - _paneStartX;
+        var width = Math.Clamp(_paneStartWidth + delta, 300, 520);
+        LeftPaneColumn.Width = new GridLength(width);
+        e.Handled = true;
+    }
+
+    private void PaneSplitter_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_resizingPane)
+        {
+            return;
+        }
+
+        _resizingPane = false;
+        PaneSplitter.ReleasePointerCapture(e.Pointer);
+        PaneSplitter.Background = (Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"];
+        e.Handled = true;
+    }
+
+    private void PaneSplitter_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        _resizingPane = false;
+        if (Application.Current.Resources.TryGetValue("DividerStrokeColorDefaultBrush", out var resource) &&
+            resource is Brush brush)
+        {
+            PaneSplitter.Background = brush;
+        }
+    }
     private async Task InitializeAsync()
     {
         if (_workspaceService is null)
@@ -81,20 +162,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        try
-        {
-            await CodeWebView.EnsureCoreWebView2Async();
-            CodeWebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
-            CodeWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
-            CodeWebView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
-            _webReady = true;
-        }
-        catch (Exception error)
-        {
-            ShowError("WebView2 initialization failed", error.Message);
-        }
-
         _initialized = true;
+
         await ReloadSymbolsAsync(true);
         if (_initialPdbPaths.Count > 0)
         {
@@ -150,7 +219,7 @@ public sealed partial class MainWindow : Window
             _suppressControlEvents = true;
             PdbFilterBox.SelectedIndex = 0;
             _suppressControlEvents = false;
-            _currentDefinition = null;
+            ClearDefinition();
             await ReloadSymbolsAsync(true);
             StatusText.Text = $"Loaded {_pdbs.Count:N0} PDB file(s)";
         }
@@ -186,7 +255,7 @@ public sealed partial class MainWindow : Window
             _suppressControlEvents = true;
             PdbFilterBox.SelectedIndex = 0;
             _suppressControlEvents = false;
-            _currentDefinition = null;
+            ClearDefinition();
             await ReloadSymbolsAsync(true);
             UpdateMemoryUsage();
         }
@@ -223,6 +292,11 @@ public sealed partial class MainWindow : Window
     }
     private async void PdbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_ignoreNextPdbFilterChange)
+        {
+            _ignoreNextPdbFilterChange = false;
+            return;
+        }
         if (!_initialized || _suppressControlEvents)
         {
             return;
@@ -239,8 +313,13 @@ public sealed partial class MainWindow : Window
         await ReloadSymbolsAsync(true);
     }
 
-    private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    private async void SearchBox_TextChanged(object sender, AutoSuggestBoxTextChangedEventArgs e)
     {
+        if (_ignoreNextSearchChange)
+        {
+            _ignoreNextSearchChange = false;
+            return;
+        }
         if (!_initialized || _suppressControlEvents)
         {
             return;
@@ -306,6 +385,7 @@ public sealed partial class MainWindow : Window
             _currentOffset += (uint)page.Items.Count;
             _hasMore = page.HasMore;
             LoadMoreButton.Visibility = _hasMore ? Visibility.Visible : Visibility.Collapsed;
+            SymbolCountText.Text = $"{page.Total:N0} symbols";
             StatusText.Text = $"{page.Total:N0} symbol(s) match the current filter";
         }
         catch (OperationCanceledException)
@@ -361,13 +441,7 @@ public sealed partial class MainWindow : Window
             SymbolMetadata.Text = $"{definition.DisplayKind}  ·  {pdbName}";
             CopyButton.IsEnabled = true;
 
-            if (_webReady && CodeWebView.CoreWebView2 is not null)
-            {
-                CodeWebView.CoreWebView2.NavigateToString(
-                    CodeHtmlRenderer.RenderDocument(definition.Code, definition.Links));
-                CodeWebView.Visibility = Visibility.Visible;
-                EmptyState.Visibility = Visibility.Collapsed;
-            }
+            RenderCurrentDefinition();
 
             StatusText.Text = $"Selected {definition.Name}";
         }
@@ -382,30 +456,36 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void CoreWebView2_WebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
+    private void ClearDefinition()
     {
-        try
-        {
-            using var document = JsonDocument.Parse(args.WebMessageAsJson);
-            var root = document.RootElement;
-            if (root.TryGetProperty("type", out var type) && type.GetString() == "symbol" &&
-                root.TryGetProperty("pdbId", out var pdbIdElement) &&
-                root.TryGetProperty("symIndexId", out var symIdElement))
-            {
-                var pdbId = pdbIdElement.GetUInt32();
-                var symIndexId = symIdElement.GetUInt32();
-                var kind = root.TryGetProperty("kind", out var kindElement)
-                    ? kindElement.GetString() ?? string.Empty
-                    : string.Empty;
-                await NavigateToSymbolAsync(pdbId, symIndexId, kind, true);
-            }
-        }
-        catch (Exception error)
-        {
-            ShowError("Invalid symbol navigation request", error.Message);
-        }
+        _currentDefinition = null;
+        CopyButton.IsEnabled = false;
+        BreadcrumbText.Text = "No symbol selected";
+        SymbolTitle.Text = "Open a PDB to begin";
+        SymbolMetadata.Text = string.Empty;
+        CodeLineNumbers.Text = string.Empty;
+        CodeRichText.Blocks.Clear();
+        CodeSurface.Visibility = Visibility.Collapsed;
+        EmptyState.Visibility = Visibility.Visible;
     }
+    private void RenderCurrentDefinition()
+    {
+        if (_currentDefinition is null)
+        {
+            return;
+        }
 
+        var darkTheme = RootGrid.ActualTheme != ElementTheme.Light;
+        CodeDocumentRenderer.Render(
+            CodeRichText,
+            CodeLineNumbers,
+            _currentDefinition.Code,
+            _currentDefinition.Links,
+            darkTheme,
+            link => NavigateToSymbolAsync(link.TargetPdbId, link.TargetSymIndexId, link.TargetKind, true));
+        CodeSurface.Visibility = Visibility.Visible;
+        EmptyState.Visibility = Visibility.Collapsed;
+    }
     private async Task NavigateToSymbolAsync(uint pdbId, uint symIndexId, string kind, bool addHistory)
     {
         if (_workspaceService is null)
@@ -424,12 +504,17 @@ public sealed partial class MainWindow : Window
         {
             _suppressControlEvents = true;
             var pdbOption = _pdbFilters.FirstOrDefault(value => value.PdbId == pdbId);
-            if (pdbOption is not null)
+            if (pdbOption is not null && !ReferenceEquals(PdbFilterBox.SelectedItem, pdbOption))
             {
+                _ignoreNextPdbFilterChange = true;
                 PdbFilterBox.SelectedItem = pdbOption;
             }
             EnsureCategorySelected(kind);
-            SearchBox.Text = string.Empty;
+            if (!string.IsNullOrEmpty(SearchBox.Text))
+            {
+                _ignoreNextSearchChange = true;
+                SearchBox.Text = string.Empty;
+            }
 
             var categories = SelectedCategories;
             var located = await _workspaceService.LocateSymbolAsync(
@@ -515,6 +600,15 @@ public sealed partial class MainWindow : Window
             var package = new DataPackage();
             package.SetText(_currentDefinition.Code);
             Clipboard.SetContent(package);
+            try
+            {
+                // Persisting the clipboard can fail in restricted desktop sessions,
+                // but the content is already available for the current session.
+                Clipboard.Flush();
+            }
+            catch
+            {
+            }
             StatusText.Text = "Copied C/C++ definition to the clipboard";
             return;
         }
@@ -524,14 +618,14 @@ public sealed partial class MainWindow : Window
             // is unavailable in the current desktop session.
         }
 
-        for (var attempt = 0; attempt < 5; attempt++)
+        for (var attempt = 0; attempt < 10; attempt++)
         {
             if (UnicodeClipboard.TrySetText(_currentDefinition.Code))
             {
                 StatusText.Text = "Copied C/C++ definition to the clipboard";
                 return;
             }
-            await Task.Delay(60);
+            await Task.Delay(80);
         }
 
         ShowError("Copy failed", "The clipboard is unavailable.");

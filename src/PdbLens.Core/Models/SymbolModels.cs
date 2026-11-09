@@ -14,9 +14,21 @@ public sealed record SymbolItem(
     uint SymIndexId,
     string Name,
     string Kind,
-    string DisplayKind)
+    string DisplayKind,
+    string PdbName)
 {
     public string Key => $"{PdbId}:{SymIndexId}";
+    public string Subtitle => $"{DisplayKind} · {PdbName}";
+    public string Glyph => Kind switch
+    {
+        "struct" or "class" or "union" => "\uE8F1",
+        "enum" => "\uE8EF",
+        "typedef" => "\uE8C8",
+        "function" => "\uE8A1",
+        "data" => "\uE8B7",
+        "publicSymbol" => "\uE8D7",
+        _ => "\uE8B7"
+    };
 }
 
 public sealed record SymbolPage(
@@ -46,6 +58,17 @@ public sealed record SymbolDefinition(
     IReadOnlyList<SymbolLink> Links)
 {
     public string Key => $"{PdbId}:{SymIndexId}";
+    public string Subtitle => $"{DisplayKind} · PDB {PdbId}";
+    public string Glyph => Kind switch
+    {
+        "struct" or "class" or "union" => "\uE8F1",
+        "enum" => "\uE8EF",
+        "typedef" => "\uE8C8",
+        "function" => "\uE8A1",
+        "data" => "\uE8B7",
+        "publicSymbol" => "\uE8D7",
+        _ => "\uE8B7"
+    };
 }
 
 public sealed record LocatedSymbol(

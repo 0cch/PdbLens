@@ -429,3 +429,5 @@ FodyWeavers.xsd
 
 # PdbLens local build output
 /build/
+
+/artifacts/
