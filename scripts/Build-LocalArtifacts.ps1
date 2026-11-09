@@ -18,16 +18,26 @@ function Invoke-Checked([scriptblock]$action, [string]$message) {
 
 Push-Location $root
 try {
-    .\build.ps1 -Configuration Release -Package
+    .\build.ps1 -Configuration Release -Package -PackageKind Full
 
     $builtMsix = Get-ChildItem (Join-Path $root 'src/PdbLens.App/AppPackages') -Recurse -Filter *.msix |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $builtMsix) { throw 'MSIX output not found.' }
 
-    $msixPath = Join-Path $output "PdbLens-v$version-x64.msix"
-    Copy-Item -LiteralPath $builtMsix.FullName -Destination $msixPath -Force
+    $offlineMsixPath = Join-Path $output "PdbLens-v$version-x64-offline.msix"
+    Copy-Item -LiteralPath $builtMsix.FullName -Destination $offlineMsixPath -Force
     & (Join-Path $root 'scripts/Test-PackageContents.ps1') `
-        -MsixPath $msixPath -ExpectedVersion $version
+        -MsixPath $offlineMsixPath -ExpectedVersion $version -PackageKind Full
+
+    .\build.ps1 -Configuration Release -Package -PackageKind Lean
+    $leanBuiltMsix = Get-ChildItem (Join-Path $root 'src/PdbLens.App/AppPackages') -Recurse -Filter *.msix |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $leanBuiltMsix) { throw 'Lean MSIX output not found.' }
+
+    $leanMsixPath = Join-Path $output "PdbLens-v$version-x64-online.msix"
+    Copy-Item -LiteralPath $leanBuiltMsix.FullName -Destination $leanMsixPath -Force
+    & (Join-Path $root 'scripts/Test-PackageContents.ps1') `
+        -MsixPath $leanMsixPath -ExpectedVersion $version -PackageKind Lean
 
     $portablePath = Join-Path $output 'portable'
     if (Test-Path -LiteralPath $portablePath) {
@@ -44,27 +54,21 @@ try {
     Get-ChildItem -LiteralPath $portablePath -Filter *.xml -File | Remove-Item -Force
 
     & (Join-Path $root 'scripts/Test-PackageContents.ps1') `
-        -MsixPath $msixPath -PortableDirectory $portablePath
+        -MsixPath $offlineMsixPath -PortableDirectory $portablePath -PackageKind Full
 
     $portableZip = Join-Path $output "PdbLens-v$version-win-x64.zip"
     Compress-Archive -Path (Join-Path $portablePath '*') -DestinationPath $portableZip -Force
 
     $symbolsPath = Join-Path $output 'symbols'
     New-Item -ItemType Directory -Force -Path $symbolsPath | Out-Null
+    Copy-Item (Join-Path $root 'build/native/Release/PdbLens.pdb') $symbolsPath -Force
     Copy-Item (Join-Path $root 'build/native/Release/PdbLens.Native.pdb') $symbolsPath -Force
-    Copy-Item (Join-Path $root 'src/PdbLens.Core/bin/Release/net9.0-windows10.0.26100.0/PdbLens.Core.pdb') $symbolsPath -Force
-    Copy-Item (Join-Path $root 'src/PdbLens.App/bin/x64/Release/net9.0-windows10.0.26100.0/win-x64/PdbLens.App.pdb') $symbolsPath -Force
+    Copy-Item (Join-Path $root 'src/PdbLens.Core/bin/Release/net10.0-windows10.0.26100.0/PdbLens.Core.pdb') $symbolsPath -Force
+    Copy-Item (Join-Path $root 'src/PdbLens.App/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/PdbLens.App.pdb') $symbolsPath -Force
     $symbolsZip = Join-Path $output "PdbLens-v$version-symbols.zip"
     Compress-Archive -Path (Join-Path $symbolsPath '*') -DestinationPath $symbolsZip -Force
 
-    $installerPath = Join-Path $output "PdbLens-Setup-v$version.appinstaller"
-    $msixUrl = "https://github.com/0cch/PdbLens/releases/download/v$version/PdbLens-v$version-x64.msix"
-    [xml]$packagedManifest = Get-Content -LiteralPath (Join-Path $root 'src/PdbLens.App/Package.appxmanifest')
-    $publisher = $packagedManifest.Package.Identity.Publisher
-    & (Join-Path $root 'scripts/New-OnlineInstaller.ps1') `
-        -Version $version -MsixUri $msixUrl -Publisher $publisher -OutputPath $installerPath
-
-    $artifacts = @($msixPath, $portableZip, $installerPath, $symbolsZip)
+    $artifacts = @($offlineMsixPath, $leanMsixPath, $portableZip, $symbolsZip)
     $hashLines = foreach ($artifact in $artifacts) {
         $hash = (Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash
         "$hash  $(Split-Path -Leaf $artifact)"

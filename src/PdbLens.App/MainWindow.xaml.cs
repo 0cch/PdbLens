@@ -48,8 +48,9 @@ public sealed partial class MainWindow : Window
     {
         _initialPdbPaths = initialPdbPaths ?? Array.Empty<string>();
         InitializeComponent();
-        Title = "PDB Lens";
+        Title = "PdbLens";
         ResizeWindow();
+        ConfigureTitleBar();
         ConfigureKeyboardAccelerators();
 
         RootGrid.ActualThemeChanged += (_, _) => RenderCurrentDefinition();
@@ -65,7 +66,8 @@ public sealed partial class MainWindow : Window
         catch (Exception error)
         {
             OpenPdbButton.IsEnabled = false;
-            ShowError("Unable to initialize PDB Lens", error.Message);
+            FallbackOpenPdbButton.IsEnabled = false;
+            ShowError("Unable to initialize PdbLens", error.Message);
         }
 
         Closed += MainWindow_Closed;
@@ -81,6 +83,27 @@ public sealed partial class MainWindow : Window
         var width = Math.Clamp(workArea.Width - 96, 900, 1440);
         var height = Math.Clamp(workArea.Height - 96, 640, 900);
         appWindow.Resize(new SizeInt32(width, height));
+    }
+
+    private void ConfigureTitleBar()
+    {
+        try
+        {
+            if (!AppWindowTitleBar.IsCustomizationSupported())
+            {
+                AppTitleBar.Visibility = Visibility.Collapsed;
+                FallbackToolbar.Visibility = Visibility.Visible;
+                return;
+            }
+
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(AppTitleBar);
+        }
+        catch
+        {
+            AppTitleBar.Visibility = Visibility.Collapsed;
+            FallbackToolbar.Visibility = Visibility.Visible;
+        }
     }
 
     private void ConfigureKeyboardAccelerators()
@@ -222,6 +245,9 @@ public sealed partial class MainWindow : Window
             ClearDefinition();
             await ReloadSymbolsAsync(true);
             StatusText.Text = $"Loaded {_pdbs.Count:N0} PDB file(s)";
+            TitleSubtitleText.Text = _pdbs.Count == 1
+                ? _pdbs[0].Name
+                : $"{_pdbs.Count:N0} PDB files loaded";
         }
         catch (Exception error)
         {
@@ -257,6 +283,9 @@ public sealed partial class MainWindow : Window
             _suppressControlEvents = false;
             ClearDefinition();
             await ReloadSymbolsAsync(true);
+            TitleSubtitleText.Text = _pdbs.Count == 0
+                ? "PDB symbol explorer"
+                : _pdbs.Count == 1 ? _pdbs[0].Name : $"{_pdbs.Count:N0} PDB files loaded";
             UpdateMemoryUsage();
         }
         catch (Exception error)
@@ -292,6 +321,7 @@ public sealed partial class MainWindow : Window
     }
     private async void PdbFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        ClosePdbButton.IsEnabled = SelectedPdbId != 0;
         if (_ignoreNextPdbFilterChange)
         {
             _ignoreNextPdbFilterChange = false;
@@ -673,8 +703,12 @@ public sealed partial class MainWindow : Window
 
     private void UpdateHistoryButtons()
     {
-        BackButton.IsEnabled = _backHistory.Count > 0;
-        ForwardButton.IsEnabled = _forwardHistory.Count > 0;
+        var canGoBack = _backHistory.Count > 0;
+        var canGoForward = _forwardHistory.Count > 0;
+        BackButton.IsEnabled = canGoBack;
+        ForwardButton.IsEnabled = canGoForward;
+        FallbackBackButton.IsEnabled = canGoBack;
+        FallbackForwardButton.IsEnabled = canGoForward;
     }
 
     private void SetBusy(bool busy)

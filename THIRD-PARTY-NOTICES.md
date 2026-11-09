@@ -1,4 +1,4 @@
-# Third-party notices
+﻿# Third-party notices
 
 PdbLens uses the following third-party components:
 
@@ -7,6 +7,12 @@ PdbLens uses the following third-party components:
 - Project: https://github.com/0cch/SymWrap
 - License: GNU Lesser General Public License v3.0
 - Usage: DIA initialization, COM wrappers, and symbol declaration rendering.
+
+## Microsoft .NET
+
+- Project: https://github.com/dotnet/runtime
+- License: MIT
+- Usage: self-contained .NET runtime files in the offline MSIX and portable ZIP.
 
 ## Microsoft Windows App SDK
 

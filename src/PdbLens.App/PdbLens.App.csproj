@@ -1,7 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>PdbLens.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -52,6 +52,8 @@
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\native\$(Configuration)\PdbLens.Native.dll')">
+    <Content Include="$(MSBuildProjectDirectory)\..\..\build\native\$(Configuration)\PdbLens.exe"
+             Link="PdbLens.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(MSBuildProjectDirectory)\..\..\build\native\$(Configuration)\PdbLens.Native.dll"
              Link="PdbLens.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(MSBuildProjectDirectory)\..\..\build\native\$(Configuration)\msdia140.dll"
@@ -60,6 +62,7 @@
 
   <Target Name="CopyNativeDependencies" AfterTargets="Build" Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\native\$(Configuration)\PdbLens.Native.dll')">
     <ItemGroup>
+      <NativeDependencies Include="$(MSBuildProjectDirectory)\..\..\build\native\$(Configuration)\PdbLens.exe" />
       <NativeDependencies Include="$(MSBuildProjectDirectory)\..\..\build\native\$(Configuration)\PdbLens.Native.dll" />
       <NativeDependencies Include="$(MSBuildProjectDirectory)\..\..\build\native\$(Configuration)\msdia140.dll" />
     </ItemGroup>

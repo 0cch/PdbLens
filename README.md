@@ -23,9 +23,11 @@ PdbLens does not depend on WebView2. The code viewer is implemented with WinUI
 
 - Windows 10 1809 or newer, x64.
 - Visual Studio 2022 with the Desktop development with C++ and DIA SDK components.
-- .NET 9 SDK for building.
-- The published MSIX and portable package are self-contained and do not require a
-  separately installed .NET or Windows App SDK runtime.
+- .NET 10 SDK for building.
+- The full offline MSIX and portable ZIP are self-contained.
+- The lightweight online MSIX bundles WinUI/Windows App SDK but requires the
+  .NET 10 Desktop Runtime. PdbLens detects a missing runtime and offers to open
+  Microsoft's official download page.
 
 ## Build
 
@@ -33,40 +35,45 @@ PdbLens does not depend on WebView2. The code viewer is implemented with WinUI
 .\build.ps1 -Configuration Debug
 ```
 
-Build and validate a local MSIX:
+Build and validate the complete offline MSIX:
 
 ```powershell
-.\build.ps1 -Configuration Release -Package
+.\build.ps1 -Configuration Release -Package -PackageKind Full
+```
+
+Build and validate the lightweight online MSIX:
+
+```powershell
+.\build.ps1 -Configuration Release -Package -PackageKind Lean
 ```
 
 The application is produced under:
 
 ```text
-src/PdbLens.App/bin/x64/Debug/net9.0-windows10.0.26100.0/win-x64/
+src/PdbLens.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/
 ```
 
 Run it with one or more PDB paths:
 
 ```powershell
-.\src\PdbLens.App\bin\x64\Debug\net9.0-windows10.0.26100.0\win-x64\PdbLens.App.exe .\sample.pdb
+.\src\PdbLens.App\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\PdbLens.exe .\sample.pdb
 ```
 
 ## Release artifacts
 
 A release contains:
 
-- `PdbLens-vX.Y.Z.BUILD-x64.msix` - complete self-contained offline package.
-- `PdbLens-Setup-vX.Y.Z.BUILD.appinstaller` - online installer/updater.
+- `PdbLens-vX.Y.Z.BUILD-x64-offline.msix` - complete offline package with .NET
+  and Windows App SDK included.
+- `PdbLens-vX.Y.Z.BUILD-x64-online.msix` - lightweight package with WinUI and
+  Windows App SDK included; .NET 10 Desktop Runtime is required.
 - `PdbLens-vX.Y.Z.BUILD-win-x64.zip` - self-contained portable package.
 - `PdbLens-vX.Y.Z.BUILD-symbols.zip` - App, Core, and Native PDB files.
 - `PdbLens-vX.Y.Z.BUILD-SHA256SUMS.txt` - SHA256 checksums.
 
-The MSIX and portable package include the required .NET and Windows App SDK
-runtime files. Only unused Windows App SDK components such as AI, ML, Search,
-and Widgets are excluded.
-
-The online `.appinstaller` uses Windows App Installer to download and update the
-signed MSIX from the GitHub Release.
+Both MSIX packages use the native `PdbLens.exe` launcher. The launcher checks for
+the .NET 10 Desktop Runtime when the package does not contain a local runtime and
+offers the official Microsoft download page when it is missing.
 
 ## Versioning
 
@@ -101,8 +108,8 @@ second workflow run.
 ## Release acceptance
 
 The release workflow creates a **draft** Release. It must not be published until
-the installer, portable package, symbols package, and core application workflows
-have been manually accepted.
+the offline MSIX, online MSIX, portable package, symbols package, and core
+application workflows have been manually accepted.
 
 ### Code signing
 
@@ -112,17 +119,19 @@ For a production release, configure these GitHub Actions secrets:
 - `WINDOWS_CERTIFICATE_PASSWORD`
 
 If the certificate subject is not `CN=PdbLens`, also create the repository
-variable `WINDOWS_PUBLISHER` with the exact certificate subject. The MSIX
-manifest and online `.appinstaller` are updated to use that publisher before
-packaging.
+variable `WINDOWS_PUBLISHER` with the exact certificate subject. Both MSIX
+packages are built with that publisher and signature verification is required
+after signing.
 
-Unsigned packages are still produced for manual testing, but Windows may require
-developer mode or a trusted test certificate to install them.
+Unsigned packages are still produced for inspection and manual testing, but
+Windows may require developer mode or a trusted production certificate. Do not
+install untrusted test certificates on user machines.
 
 ## Architecture
 
 ```text
 PdbLens.App       WinUI 3 UI, native code renderer, navigation
+PdbLens.Launcher  Native .NET runtime detection and managed app launcher
 PdbLens.Core      P/Invoke contract, dedicated DIA worker thread, paging models
 PdbLens.Native    C ABI bridge, compact symbol index, DIA definition builder
 SymWrap           DIA lifecycle and symbol rendering primitives (submodule)

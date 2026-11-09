@@ -2,7 +2,9 @@
     [Parameter(Mandatory = $true)]
     [string]$MsixPath,
     [string]$ExpectedVersion,
-    [string]$PortableDirectory
+    [string]$PortableDirectory,
+    [ValidateSet('Full', 'Lean')]
+    [string]$PackageKind = 'Full'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,19 +16,20 @@ if (-not (Test-Path -LiteralPath $packagePath)) {
 }
 
 $requiredFiles = @(
+    'PdbLens.exe',
     'PdbLens.App.exe',
     'PdbLens.Core.dll',
     'PdbLens.Native.dll',
     'msdia140.dll',
-    'coreclr.dll',
-    'hostfxr.dll',
-    'hostpolicy.dll',
     'Microsoft.ui.xaml.dll',
     'Microsoft.UI.Xaml.Controls.dll',
     'Microsoft.WindowsAppRuntime.dll',
     'Microsoft.Windows.SDK.NET.dll',
     'AppxManifest.xml'
 )
+if ($PackageKind -eq 'Full') {
+    $requiredFiles += @('coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll')
+}
 
 $forbiddenPatterns = @(
     'onnxruntime.dll',
@@ -34,6 +37,9 @@ $forbiddenPatterns = @(
     'Microsoft.Windows.Search.dll',
     'Microsoft.Windows.Widgets.dll',
     'Microsoft.Windows.AI',
+    'Microsoft.WindowsAppSDK.AI',
+    'Microsoft.WindowsAppSDK.ML',
+    'MachineLearning',
     'Microsoft.Asg.SemanticIndex',
     'Microsoft.ML',
     'System.Numerics.Tensors.dll',
@@ -59,6 +65,14 @@ try {
         }
     }
 
+    if ($PackageKind -eq 'Lean') {
+        foreach ($runtimeFile in @('coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll')) {
+            if ($names | Where-Object { $_ -eq $runtimeFile }) {
+                $errors.Add("Lean package must not bundle .NET runtime file: $runtimeFile")
+            }
+        }
+    }
+
     if ($ExpectedVersion) {
         $manifestEntry = $zip.GetEntry('AppxManifest.xml')
         if ($manifestEntry) {
@@ -73,6 +87,11 @@ try {
             $actualVersion = $manifest.Package.Identity.Version
             if ($actualVersion -ne $ExpectedVersion) {
                 $errors.Add("MSIX version mismatch: expected $ExpectedVersion, found $actualVersion")
+            }
+
+            $executable = $manifest.Package.Applications.Application.Executable
+            if ($executable -ne 'PdbLens.exe') {
+                $errors.Add("MSIX entry point must be PdbLens.exe, found: $executable")
             }
         }
     }
@@ -97,7 +116,20 @@ if ($PortableDirectory) {
         throw "Portable directory not found: $portablePath"
     }
 
-    $portableRequiredFiles = $requiredFiles | Where-Object { $_ -ne 'AppxManifest.xml' }
+    $portableRequiredFiles = @(
+        'PdbLens.exe',
+        'PdbLens.App.exe',
+        'PdbLens.Core.dll',
+        'PdbLens.Native.dll',
+        'msdia140.dll',
+        'coreclr.dll',
+        'hostfxr.dll',
+        'hostpolicy.dll',
+        'Microsoft.ui.xaml.dll',
+        'Microsoft.UI.Xaml.Controls.dll',
+        'Microsoft.WindowsAppRuntime.dll',
+        'Microsoft.Windows.SDK.NET.dll'
+    )
     $portableErrors = [Collections.Generic.List[string]]::new()
     foreach ($required in $portableRequiredFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $portablePath $required) -PathType Leaf)) {
@@ -121,3 +153,5 @@ if ($PortableDirectory) {
     $portableBytes = (Get-ChildItem -LiteralPath $portablePath -Recurse -File | Measure-Object Length -Sum).Sum
     Write-Host ("Portable validation passed: {0:N1} MB uncompressed" -f ($portableBytes / 1MB))
 }
+
+Write-Host "Validated package kind: $PackageKind"

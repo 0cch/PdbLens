@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 3.20)
 
 project(PdbLens.Native LANGUAGES CXX)
 
@@ -62,6 +62,26 @@ set_target_properties(PdbLens.Native PROPERTIES
     OUTPUT_NAME "PdbLens.Native"
     PREFIX "")
 
+add_executable(PdbLens.Launcher WIN32
+    src/PdbLens.Launcher/Launcher.cpp)
+
+target_compile_definitions(PdbLens.Launcher PRIVATE
+    UNICODE
+    _UNICODE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN)
+
+if(MSVC)
+    target_compile_options(PdbLens.Launcher PRIVATE /W4 /permissive- /utf-8 /Zi)
+    target_link_options(PdbLens.Launcher PRIVATE /DEBUG)
+endif()
+
+target_link_libraries(PdbLens.Launcher PRIVATE shell32)
+
+set_target_properties(PdbLens.Launcher PROPERTIES
+    OUTPUT_NAME "PdbLens"
+    PREFIX "")
+
 enable_testing()
 
 add_executable(PdbLens.Native.Tests
@@ -85,3 +105,5 @@ add_test(NAME PdbLens.Native.Tests
     COMMAND PdbLens.Native.Tests "$<TARGET_PDB_FILE:PdbLens.Native.Tests>")
 set_tests_properties(PdbLens.Native.Tests PROPERTIES
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:PdbLens.Native.Tests>")
+add_test(NAME PdbLens.Launcher.RuntimeCheck
+    COMMAND "$<TARGET_FILE:PdbLens.Launcher>" --runtime-check)

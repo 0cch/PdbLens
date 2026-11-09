@@ -48,7 +48,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Resolve build version
         shell: pwsh
@@ -128,7 +128,22 @@ jobs:
           if (-not $msix) { throw "MSIX output not found" }
 
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item -LiteralPath $msix.FullName -Destination "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix"
+          Copy-Item -LiteralPath $msix.FullName -Destination "artifacts/PdbLens-v$env:FULL_VERSION-x64-offline.msix"
+
+      - name: Build lightweight online MSIX
+        shell: pwsh
+        run: |
+          dotnet build src/PdbLens.App/PdbLens.App.csproj -c Release -p:Platform=x64 `
+            -p:PdbLensPackaged=true -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxPackageSigningEnabled=false -p:SelfContained=false `
+            -p:WindowsAppSDKSelfContained=true -p:Version=$env:FULL_VERSION `
+            -p:FileVersion=$env:FULL_VERSION -p:AssemblyVersion=$env:ASSEMBLY_VERSION `
+            -p:InformationalVersion="$env:FULL_VERSION+$env:GITHUB_SHA" --no-restore
+
+          $msix = Get-ChildItem src/PdbLens.App/AppPackages -Recurse -Filter *.msix |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $msix) { throw "Lightweight MSIX output not found" }
+          Copy-Item -LiteralPath $msix.FullName -Destination "artifacts/PdbLens-v$env:FULL_VERSION-x64-online.msix"
 
       - name: Build portable package
         shell: pwsh
@@ -148,9 +163,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/symbols | Out-Null
+          Copy-Item "build/native/Release/PdbLens.pdb" artifacts/symbols/
           Copy-Item "build/native/Release/PdbLens.Native.pdb" artifacts/symbols/
-          Copy-Item "src/PdbLens.Core/bin/Release/net9.0-windows10.0.26100.0/PdbLens.Core.pdb" artifacts/symbols/
-          Copy-Item "src/PdbLens.App/bin/x64/Release/net9.0-windows10.0.26100.0/win-x64/PdbLens.App.pdb" artifacts/symbols/
+          Copy-Item "src/PdbLens.Core/bin/Release/net10.0-windows10.0.26100.0/PdbLens.Core.pdb" artifacts/symbols/
+          Copy-Item "src/PdbLens.App/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/PdbLens.App.pdb" artifacts/symbols/
           Compress-Archive -Path artifacts/symbols/* `
             -DestinationPath "artifacts/PdbLens-v$env:FULL_VERSION-symbols.zip" -Force
 
@@ -158,20 +174,13 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/Test-PackageContents.ps1 `
-            -MsixPath "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix" `
+            -MsixPath "artifacts/PdbLens-v$env:FULL_VERSION-x64-offline.msix" `
             -PortableDirectory "artifacts/portable" `
-            -ExpectedVersion $env:FULL_VERSION
+            -ExpectedVersion $env:FULL_VERSION -PackageKind Full
 
-      - name: Create online installer
-        shell: pwsh
-        run: |
-          $msixUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/v$env:FULL_VERSION/PdbLens-v$env:FULL_VERSION-x64.msix"
-          $publisher = if ($env:WINDOWS_PUBLISHER) { $env:WINDOWS_PUBLISHER } else { "CN=PdbLens" }
-          ./scripts/New-OnlineInstaller.ps1 `
-            -Version $env:FULL_VERSION `
-            -MsixUri $msixUrl `
-            -Publisher $publisher `
-            -OutputPath "artifacts/PdbLens-Setup-v$env:FULL_VERSION.appinstaller"
+          ./scripts/Test-PackageContents.ps1 `
+            -MsixPath "artifacts/PdbLens-v$env:FULL_VERSION-x64-online.msix" `
+            -ExpectedVersion $env:FULL_VERSION -PackageKind Lean
 
       - name: Sign package when certificate is configured
         if: ${{ env.WINDOWS_CERTIFICATE_BASE64 != '' }}
@@ -185,15 +194,19 @@ jobs:
               Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw "signtool.exe not found" }
 
-          & $signtool.FullName sign /fd SHA256 /f $certificatePath `
-            /p $env:WINDOWS_CERTIFICATE_PASSWORD `
-            /tr http://timestamp.digicert.com /td SHA256 `
-            "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix"
-          if ($LASTEXITCODE -ne 0) { throw "MSIX signing failed." }
+          $packages = @(
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64-offline.msix",
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64-online.msix"
+          )
+          foreach ($package in $packages) {
+            & $signtool.FullName sign /fd SHA256 /f $certificatePath `
+              /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+              /tr http://timestamp.digicert.com /td SHA256 $package
+            if ($LASTEXITCODE -ne 0) { throw "MSIX signing failed: $package" }
 
-          & $signtool.FullName verify /pa /v `
-            "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix"
-          if ($LASTEXITCODE -ne 0) { throw "MSIX signature verification failed." }
+            & $signtool.FullName verify /pa /v $package
+            if ($LASTEXITCODE -ne 0) { throw "MSIX signature verification failed: $package" }
+          }
 
           Remove-Item -LiteralPath $certificatePath -Force
 
@@ -206,9 +219,9 @@ jobs:
         shell: pwsh
         run: |
           $files = @(
-            "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix",
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64-offline.msix",
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64-online.msix",
             "artifacts/PdbLens-v$env:FULL_VERSION-win-x64.zip",
-            "artifacts/PdbLens-Setup-v$env:FULL_VERSION.appinstaller",
             "artifacts/PdbLens-v$env:FULL_VERSION-symbols.zip"
           )
           $lines = foreach ($file in $files) {
@@ -232,8 +245,8 @@ jobs:
         run: |
           gh release create $env:FINAL_TAG --draft --generate-notes `
             --title "PdbLens $env:FINAL_TAG" `
-            "artifacts/PdbLens-v$env:FULL_VERSION-x64.msix" `
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64-offline.msix" `
+            "artifacts/PdbLens-v$env:FULL_VERSION-x64-online.msix" `
             "artifacts/PdbLens-v$env:FULL_VERSION-win-x64.zip" `
-            "artifacts/PdbLens-Setup-v$env:FULL_VERSION.appinstaller" `
             "artifacts/PdbLens-v$env:FULL_VERSION-symbols.zip" `
             "artifacts/PdbLens-v$env:FULL_VERSION-SHA256SUMS.txt"

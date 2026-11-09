@@ -1,8 +1,10 @@
-param(
+﻿param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Debug',
     [switch]$Run,
-    [switch]$Package
+    [switch]$Package,
+    [ValidateSet('Full', 'Lean')]
+    [string]$PackageKind = 'Full'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,14 +30,24 @@ dotnet test (Join-Path $root 'tests/PdbLens.Core.Tests/PdbLens.Core.Tests.csproj
     -c $Configuration --no-build --no-restore
 if ($LASTEXITCODE -ne 0) { throw 'Managed tests failed.' }
 
-$app = Join-Path $root "src/PdbLens.App/bin/x64/$Configuration/net9.0-windows10.0.26100.0/win-x64/PdbLens.App.exe"
-Write-Host "Build completed: $app"
+$appDirectory = Join-Path $root "src/PdbLens.App/bin/x64/$Configuration/net10.0-windows10.0.26100.0/win-x64"
+$app = Join-Path $appDirectory 'PdbLens.App.exe'
+$launcher = Join-Path $appDirectory 'PdbLens.exe'
+Write-Host "Build completed: $launcher"
 
 if ($Package) {
-    dotnet build (Join-Path $root 'src/PdbLens.App/PdbLens.App.csproj') `
-        -c Release -p:Platform=x64 -p:PdbLensPackaged=true `
-        -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=false --no-restore
-    if ($LASTEXITCODE -ne 0) { throw 'MSIX packaging failed.' }
+    $packageArguments = @(
+        (Join-Path $root 'src/PdbLens.App/PdbLens.App.csproj'),
+        '-c', 'Release', '-p:Platform=x64', '-p:PdbLensPackaged=true',
+        '-p:GenerateAppxPackageOnBuild=true', '-p:AppxPackageSigningEnabled=false',
+        '--no-restore'
+    )
+    if ($PackageKind -eq 'Lean') {
+        $packageArguments += @('-p:SelfContained=false', '-p:WindowsAppSDKSelfContained=true')
+    }
+
+    dotnet build @packageArguments
+    if ($LASTEXITCODE -ne 0) { throw "MSIX packaging failed ($PackageKind)." }
 
     $msix = Get-ChildItem (Join-Path $root 'src/PdbLens.App/AppPackages') -Recurse -Filter *.msix |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -44,10 +56,11 @@ if ($Package) {
     $manifestPath = Join-Path $root 'src/PdbLens.App/Package.appxmanifest'
     [xml]$manifest = Get-Content -LiteralPath $manifestPath
     $version = $manifest.Package.Identity.Version
-    & (Join-Path $root 'scripts/Test-PackageContents.ps1') -MsixPath $msix.FullName -ExpectedVersion $version
-    Write-Host "MSIX package created: $($msix.FullName)"
+    & (Join-Path $root 'scripts/Test-PackageContents.ps1') `
+        -MsixPath $msix.FullName -ExpectedVersion $version -PackageKind $PackageKind
+    Write-Host "$PackageKind MSIX package created: $($msix.FullName)"
 }
 
 if ($Run) {
-    Start-Process -FilePath $app
+    Start-Process -FilePath $launcher
 }
