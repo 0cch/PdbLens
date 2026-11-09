@@ -1,0 +1,3 @@
+[submodule "third_party/SymWrap"]
+	path = third_party/SymWrap
+	url = https://github.com/0cch/SymWrap.git
