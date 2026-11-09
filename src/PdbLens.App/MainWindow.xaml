@@ -48,28 +48,47 @@
 
         <Grid Grid.Row="0">
             <TitleBar x:Name="AppTitleBar"
-                      Title="PdbLens"
+                      Title=""
+                      AutomationProperties.Name="PdbLens title bar"
                       Height="48"
                       Background="{ThemeResource LayerFillColorDefaultBrush}">
-                <TitleBar.IconSource>
-                    <ImageIconSource ImageSource="ms-appx:///Assets/Square44x44Logo.png" />
-                </TitleBar.IconSource>
+                <TitleBar.Resources>
+                    <HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Stretch</HorizontalAlignment>
+                </TitleBar.Resources>
                 <TitleBar.Content>
-                    <Grid Padding="0,0,12,0" ColumnSpacing="8">
+                    <Grid Padding="12,0,8,0" ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                            <Button x:Name="BackButton" AutomationProperties.Name="Back" Style="{StaticResource TitleBarButtonStyle}"
-                                    ToolTipService.ToolTip="Back (Alt+Left)" Click="Back_Click"
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Image Source="ms-appx:///Assets/Square44x44Logo.png"
+                                   Width="20"
+                                   Height="20"
+                                   AutomationProperties.Name="PdbLens icon" />
+                            <TextBlock Text="PdbLens"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <Border Width="1"
+                                    Height="20"
+                                    Margin="2,0"
+                                    Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                            <Button x:Name="BackButton"
+                                    AutomationProperties.Name="Back"
+                                    Style="{StaticResource TitleBarButtonStyle}"
+                                    ToolTipService.ToolTip="Back (Alt+Left)"
+                                    Click="Back_Click"
                                     IsEnabled="False">
                                 <FontIcon Glyph="&#xE72B;" FontSize="14" />
                             </Button>
-                            <Button x:Name="ForwardButton" AutomationProperties.Name="Forward" Style="{StaticResource TitleBarButtonStyle}"
-                                    ToolTipService.ToolTip="Forward (Alt+Right)" Click="Forward_Click"
+                            <Button x:Name="ForwardButton"
+                                    AutomationProperties.Name="Forward"
+                                    Style="{StaticResource TitleBarButtonStyle}"
+                                    ToolTipService.ToolTip="Forward (Alt+Right)"
+                                    Click="Forward_Click"
                                     IsEnabled="False">
                                 <FontIcon Glyph="&#xE72A;" FontSize="14" />
                             </Button>
@@ -78,21 +97,60 @@
                         <TextBlock x:Name="TitleSubtitleText"
                                    Grid.Column="1"
                                    Text="PDB symbol explorer"
+                                   HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
                                    Style="{StaticResource CaptionTextStyle}"
                                    TextTrimming="CharacterEllipsis" />
 
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
+                        <StackPanel Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    Spacing="6"
                                     VerticalAlignment="Center">
                             <ProgressRing x:Name="BusyRing" Width="18" Height="18" IsActive="False" />
-                            <Button x:Name="OpenPdbButton"
-                                    Style="{StaticResource AccentButtonStyle}"
-                                    ToolTipService.ToolTip="Open PDB (Ctrl+O)"
-                                    Click="OpenPdb_Click">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE8E5;" FontSize="14" />
-                                    <TextBlock Text="Open PDB" />
-                                </StackPanel>
+                            <DropDownButton AutomationProperties.Name="Theme"
+                                            Height="32"
+                                            Padding="8,0"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            ToolTipService.ToolTip="Change app theme">
+                                <FontIcon Glyph="&#xE793;" FontSize="14" />
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <RadioMenuFlyoutItem x:Name="SystemThemeMenuItem"
+                                                             Text="Use system setting"
+                                                             Tag="System"
+                                                             GroupName="Theme"
+                                                             Click="ThemeMenuItem_Click">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE770;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </RadioMenuFlyoutItem>
+                                        <RadioMenuFlyoutItem x:Name="LightThemeMenuItem"
+                                                             Text="Light"
+                                                             Tag="Light"
+                                                             GroupName="Theme"
+                                                             Click="ThemeMenuItem_Click">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE706;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </RadioMenuFlyoutItem>
+                                        <RadioMenuFlyoutItem x:Name="DarkThemeMenuItem"
+                                                             Text="Dark"
+                                                             Tag="Dark"
+                                                             GroupName="Theme"
+                                                             Click="ThemeMenuItem_Click">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE708;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </RadioMenuFlyoutItem>
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
+                            <Button x:Name="AboutButton"
+                                    AutomationProperties.Name="About PdbLens"
+                                    Style="{StaticResource TitleBarButtonStyle}"
+                                    ToolTipService.ToolTip="About PdbLens">
+                                <FontIcon Glyph="&#xE946;" FontSize="14" />
                             </Button>
                         </StackPanel>
                     </Grid>
@@ -108,29 +166,60 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <Button x:Name="FallbackBackButton" AutomationProperties.Name="Back" Style="{StaticResource TitleBarButtonStyle}"
-                            ToolTipService.ToolTip="Back (Alt+Left)" Click="Back_Click"
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Image Source="ms-appx:///Assets/Square44x44Logo.png" Width="20" Height="20" />
+                    <TextBlock Text="PdbLens" VerticalAlignment="Center" FontWeight="SemiBold" />
+                    <Button x:Name="FallbackBackButton"
+                            AutomationProperties.Name="Back"
+                            Style="{StaticResource TitleBarButtonStyle}"
+                            ToolTipService.ToolTip="Back (Alt+Left)"
+                            Click="Back_Click"
                             IsEnabled="False">
                         <FontIcon Glyph="&#xE72B;" FontSize="14" />
                     </Button>
-                    <Button x:Name="FallbackForwardButton" AutomationProperties.Name="Forward" Style="{StaticResource TitleBarButtonStyle}"
-                            ToolTipService.ToolTip="Forward (Alt+Right)" Click="Forward_Click"
+                    <Button x:Name="FallbackForwardButton"
+                            AutomationProperties.Name="Forward"
+                            Style="{StaticResource TitleBarButtonStyle}"
+                            ToolTipService.ToolTip="Forward (Alt+Right)"
+                            Click="Forward_Click"
                             IsEnabled="False">
                         <FontIcon Glyph="&#xE72A;" FontSize="14" />
                     </Button>
                 </StackPanel>
-                <TextBlock Grid.Column="1" Text="PdbLens" Margin="12,0,0,0"
-                           VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" />
-                <Button x:Name="FallbackOpenPdbButton" Grid.Column="2"
-                        Style="{StaticResource AccentButtonStyle}"
-                        ToolTipService.ToolTip="Open PDB (Ctrl+O)"
-                        Click="OpenPdb_Click">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE8E5;" FontSize="14" />
-                        <TextBlock Text="Open PDB" />
-                    </StackPanel>
-                </Button>
+                <TextBlock Grid.Column="1"
+                           Text="PDB symbol explorer"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextStyle}" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <DropDownButton AutomationProperties.Name="Theme"
+                                    Height="32"
+                                    Padding="8,0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    ToolTipService.ToolTip="Change app theme">
+                        <FontIcon Glyph="&#xE793;" FontSize="14" />
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <RadioMenuFlyoutItem x:Name="FallbackSystemThemeMenuItem" Text="Use system setting" Tag="System" GroupName="FallbackTheme" Click="ThemeMenuItem_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE770;" /></MenuFlyoutItem.Icon>
+                                </RadioMenuFlyoutItem>
+                                <RadioMenuFlyoutItem x:Name="FallbackLightThemeMenuItem" Text="Light" Tag="Light" GroupName="FallbackTheme" Click="ThemeMenuItem_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE706;" /></MenuFlyoutItem.Icon>
+                                </RadioMenuFlyoutItem>
+                                <RadioMenuFlyoutItem x:Name="FallbackDarkThemeMenuItem" Text="Dark" Tag="Dark" GroupName="FallbackTheme" Click="ThemeMenuItem_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE708;" /></MenuFlyoutItem.Icon>
+                                </RadioMenuFlyoutItem>
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <Button x:Name="FallbackAboutButton"
+                            AutomationProperties.Name="About PdbLens"
+                            Style="{StaticResource TitleBarButtonStyle}"
+                            ToolTipService.ToolTip="About PdbLens">
+                        <FontIcon Glyph="&#xE946;" FontSize="14" />
+                    </Button>
+                </StackPanel>
             </Grid>
         </Grid>
 
@@ -157,9 +246,10 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid Margin="16,18,16,10">
+                <Grid Margin="16,18,16,10" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
@@ -167,7 +257,18 @@
                         <TextBlock x:Name="SymbolCountText" Text="No symbols loaded"
                                    Style="{StaticResource CaptionTextStyle}" />
                     </StackPanel>
-                    <DropDownButton Grid.Column="1" Content="Filters" VerticalAlignment="Center"
+                    <Button x:Name="OpenPdbButton"
+                            Grid.Column="1"
+                            Style="{StaticResource AccentButtonStyle}"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Open PDB (Ctrl+O)"
+                            Click="OpenPdb_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8E5;" FontSize="14" />
+                            <TextBlock Text="Open PDB" />
+                        </StackPanel>
+                    </Button>
+                    <DropDownButton Grid.Column="2" Content="Filters" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Filter symbol categories">
                         <DropDownButton.Flyout>
                             <Flyout Placement="BottomEdgeAlignedRight">
@@ -279,7 +380,9 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Border Padding="20,14,20,12"
+                <Border x:Name="DefinitionHeader"
+                        Visibility="Collapsed"
+                        Padding="20,14,20,12"
                         BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                         BorderThickness="0,0,0,1">
                     <Grid ColumnSpacing="12">

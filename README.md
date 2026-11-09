@@ -14,7 +14,8 @@ PdbLens is a WinUI 3 PDB symbol explorer powered by Microsoft DIA and
 - Navigate backward and forward between symbol definitions.
 - Copy the current C/C++ definition with one click.
 - Load PDBs from the command line or by drag and drop.
-- Follow Windows light and dark themes.
+- Switch between system, light, and dark themes.
+- View application version, source repository, license, and copyright in About.
 
 PdbLens does not depend on WebView2. The code viewer is implemented with WinUI
 `RichTextBlock`, `Run`, and `Hyperlink` controls.

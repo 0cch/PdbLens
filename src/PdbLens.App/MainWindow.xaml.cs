@@ -32,6 +32,8 @@ public sealed partial class MainWindow : Window
 
     private CancellationTokenSource? _searchCancellation;
     private SymbolDefinition? _currentDefinition;
+    private AboutWindow? _aboutWindow;
+    private AppThemePreference _themePreference;
     private bool _initialized;
     private bool _suppressControlEvents;
     private bool _suppressSelectionLoading;
@@ -48,12 +50,16 @@ public sealed partial class MainWindow : Window
     {
         _initialPdbPaths = initialPdbPaths ?? Array.Empty<string>();
         InitializeComponent();
+        AboutButton.Click += About_Click;
+        FallbackAboutButton.Click += About_Click;
         Title = "PdbLens";
+        _themePreference = ThemePreferenceStore.Load();
+        ApplyThemePreference(_themePreference, false);
         ResizeWindow();
         ConfigureTitleBar();
         ConfigureKeyboardAccelerators();
 
-        RootGrid.ActualThemeChanged += (_, _) => RenderCurrentDefinition();
+        RootGrid.ActualThemeChanged += RootGrid_ActualThemeChanged;
         SymbolsList.ItemsSource = _symbols;
         PdbFilterBox.ItemsSource = _pdbFilters;
         _pdbFilters.Add(new PdbFilterOption(0, "All loaded PDBs"));
@@ -66,7 +72,6 @@ public sealed partial class MainWindow : Window
         catch (Exception error)
         {
             OpenPdbButton.IsEnabled = false;
-            FallbackOpenPdbButton.IsEnabled = false;
             ShowError("Unable to initialize PdbLens", error.Message);
         }
 
@@ -98,11 +103,74 @@ public sealed partial class MainWindow : Window
 
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AppTitleBar);
+            TitleBarThemeHelper.Apply(this, RootGrid.ActualTheme);
         }
         catch
         {
             AppTitleBar.Visibility = Visibility.Collapsed;
             FallbackToolbar.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void RootGrid_ActualThemeChanged(FrameworkElement sender, object args)
+    {
+        TitleBarThemeHelper.Apply(this, RootGrid.ActualTheme);
+        RenderCurrentDefinition();
+    }
+
+    private void ThemeMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } &&
+            Enum.TryParse<AppThemePreference>(tag, true, out var preference))
+        {
+            ApplyThemePreference(preference, true);
+        }
+    }
+
+    private void ApplyThemePreference(AppThemePreference preference, bool persist)
+    {
+        _themePreference = preference;
+        var elementTheme = ThemePreferenceStore.ToElementTheme(preference);
+        RootGrid.RequestedTheme = elementTheme;
+        _aboutWindow?.ApplyTheme(elementTheme);
+        UpdateThemeMenuChecks(preference);
+        if (persist)
+        {
+            ThemePreferenceStore.Save(preference);
+        }
+    }
+
+    private void UpdateThemeMenuChecks(AppThemePreference preference)
+    {
+        var system = preference == AppThemePreference.System;
+        var light = preference == AppThemePreference.Light;
+        var dark = preference == AppThemePreference.Dark;
+        SystemThemeMenuItem.IsChecked = system;
+        LightThemeMenuItem.IsChecked = light;
+        DarkThemeMenuItem.IsChecked = dark;
+        FallbackSystemThemeMenuItem.IsChecked = system;
+        FallbackLightThemeMenuItem.IsChecked = light;
+        FallbackDarkThemeMenuItem.IsChecked = dark;
+    }
+
+    private void About_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_aboutWindow is not null)
+            {
+                _aboutWindow.Activate();
+                return;
+            }
+
+            _aboutWindow = new AboutWindow(this, RootGrid.ActualTheme);
+            _aboutWindow.Closed += (_, _) => _aboutWindow = null;
+            _aboutWindow.Activate();
+        }
+        catch (Exception error)
+        {
+            _aboutWindow = null;
+            ShowError("Unable to open About", error.Message);
         }
     }
 
@@ -116,6 +184,8 @@ public sealed partial class MainWindow : Window
             () => Back_Click(this, new RoutedEventArgs()));
         AddKeyboardAccelerator(VirtualKey.Right, VirtualKeyModifiers.Menu,
             () => Forward_Click(this, new RoutedEventArgs()));
+        AddKeyboardAccelerator(VirtualKey.F1, VirtualKeyModifiers.None,
+            () => About_Click(this, new RoutedEventArgs()));
     }
 
     private void AddKeyboardAccelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
@@ -470,6 +540,7 @@ public sealed partial class MainWindow : Window
             SymbolTitle.Text = definition.Name;
             SymbolMetadata.Text = $"{definition.DisplayKind}  ·  {pdbName}";
             CopyButton.IsEnabled = true;
+            DefinitionHeader.Visibility = Visibility.Visible;
 
             RenderCurrentDefinition();
 
@@ -493,6 +564,7 @@ public sealed partial class MainWindow : Window
         BreadcrumbText.Text = "No symbol selected";
         SymbolTitle.Text = "Open a PDB to begin";
         SymbolMetadata.Text = string.Empty;
+        DefinitionHeader.Visibility = Visibility.Collapsed;
         CodeLineNumbers.Text = string.Empty;
         CodeRichText.Blocks.Clear();
         CodeSurface.Visibility = Visibility.Collapsed;
