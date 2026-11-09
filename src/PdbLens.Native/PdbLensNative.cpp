@@ -40,6 +40,7 @@ struct SymbolRow {
     uint32_t SymIndexId = 0;
     uint32_t Category = 0;
     CString Name;
+    CString PdbName;
 };
 
 struct LinkSpan {
@@ -346,7 +347,7 @@ public:
                 }
 
                 if (total >= offset && items.size() < limit) {
-                    items.push_back({ entry->Id, symbol.SymIndexId, symbol.Category, name });
+                    items.push_back({ entry->Id, symbol.SymIndexId, symbol.Category, name, entry->Name.c_str() });
                 }
                 ++total;
             }
@@ -368,6 +369,7 @@ public:
                    << ",\"name\":" << JsonQuote(item.Name)
                    << ",\"kind\":" << JsonQuote(KindName(item.Category))
                    << ",\"displayKind\":" << JsonQuote(DisplayKindName(item.Category))
+                   << ",\"pdbName\":" << JsonQuote(item.PdbName)
                    << '}';
         }
         output << "]}";

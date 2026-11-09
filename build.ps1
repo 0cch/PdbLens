@@ -36,7 +36,16 @@ if ($Package) {
         -c Release -p:Platform=x64 -p:PdbLensPackaged=true `
         -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=false --no-restore
     if ($LASTEXITCODE -ne 0) { throw 'MSIX packaging failed.' }
-    Write-Host "MSIX package created under: src/PdbLens.App/AppPackages"
+
+    $msix = Get-ChildItem (Join-Path $root 'src/PdbLens.App/AppPackages') -Recurse -Filter *.msix |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $msix) { throw 'MSIX package was not produced.' }
+
+    $manifestPath = Join-Path $root 'src/PdbLens.App/Package.appxmanifest'
+    [xml]$manifest = Get-Content -LiteralPath $manifestPath
+    $version = $manifest.Package.Identity.Version
+    & (Join-Path $root 'scripts/Test-PackageContents.ps1') -MsixPath $msix.FullName -ExpectedVersion $version
+    Write-Host "MSIX package created: $($msix.FullName)"
 }
 
 if ($Run) {

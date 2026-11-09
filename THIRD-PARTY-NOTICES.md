@@ -14,12 +14,6 @@ PdbLens uses the following third-party components:
 - License: Microsoft Windows App SDK license terms.
 - Usage: WinUI 3 desktop application runtime.
 
-## Microsoft Edge WebView2
-
-- Project: https://learn.microsoft.com/microsoft-edge/webview2/
-- License: Microsoft Edge WebView2 runtime license terms.
-- Usage: Read-only syntax-highlighted code view.
-
 ## Microsoft Debug Interface Access SDK
 
 - Microsoft DIA SDK redistributable components, including `msdia140.dll`.

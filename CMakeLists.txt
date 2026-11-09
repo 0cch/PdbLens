@@ -47,7 +47,8 @@ target_compile_definitions(PdbLens.Native PRIVATE
     PDBLENS_NATIVE_EXPORTS)
 
 if(MSVC)
-    target_compile_options(PdbLens.Native PRIVATE /W4 /permissive- /utf-8)
+    target_compile_options(PdbLens.Native PRIVATE /W4 /permissive- /utf-8 /Zi)
+    target_link_options(PdbLens.Native PRIVATE /DEBUG)
     target_link_directories(PdbLens.Native PRIVATE "${DIA_SDK_ROOT}/lib/amd64")
 endif()
 
